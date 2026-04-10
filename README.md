@@ -1,2 +1,1 @@
-\# gator
-
+\# wani is japanese for alligator!

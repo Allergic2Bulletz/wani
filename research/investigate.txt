@@ -1,0 +1,15 @@
+# GUN Decentralized Graph DB
+https://www.youtube.com/watch?v=oTQXzhm8w_8
+https://en.wikipedia.org/wiki/GUN_(graph_database)
+
+# Holepunch (JS P2P modules?)
+https://github.com/holepunchto
+https://www.youtube.com/watch?v=-uJNhl2bBa4
+
+# Mermaid (For making graphical models like ERD)
+https://mermaid.js.org/
+
+AI Related:
+Multitasking with AI?
+https://code.visualstudio.com/docs/copilot/agents/overview#_hand-off-a-session-to-another-agent
+
