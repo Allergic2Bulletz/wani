@@ -2,9 +2,11 @@ package protocol
 
 // Message type constants for client→server direction.
 const (
-	MsgCreateSession = "create_session"
-	MsgJoinSession   = "join_session"
-	MsgRelay         = "relay"
+	MsgCreateSession  = "create_session"
+	MsgJoinSession    = "join_session"
+	MsgRelay          = "relay"
+	MsgICECandidate   = "ice_candidate"
+	MsgICECredentials = "ice_credentials"
 )
 
 // Message type constants for server→client direction (some overlap with relay).

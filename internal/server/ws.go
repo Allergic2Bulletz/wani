@@ -10,7 +10,7 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	// Allow all origins for MVP — tighten for production.
+	// TODO - Allow all origins for MVP — tighten for production.
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
@@ -47,7 +47,13 @@ func (s *Server) dispatch(conn *websocket.Conn, msg protocol.SignalMessage) erro
 	case protocol.MsgJoinSession:
 		return s.handleJoinSession(conn, msg.Code)
 	case protocol.MsgRelay:
-		return s.handleRelay(conn, msg.Payload)
+		return s.handleRelay(conn, protocol.MsgRelay, msg.Payload)
+	case protocol.MsgICECandidate:
+		// Relay ICE candidates opaquely — server does not parse SDP.
+		return s.handleRelay(conn, protocol.MsgICECandidate, msg.Payload)
+	case protocol.MsgICECredentials:
+		// Relay ICE credentials opaquely — server does not inspect ufrag/pwd.
+		return s.handleRelay(conn, protocol.MsgICECredentials, msg.Payload)
 	default:
 		return fmt.Errorf("unknown message type: %q", msg.Type)
 	}
@@ -88,13 +94,13 @@ func (s *Server) handleJoinSession(conn *websocket.Conn, code string) error {
 	return nil
 }
 
-// handleRelay forwards the payload to the other peer in the session.
-func (s *Server) handleRelay(conn *websocket.Conn, payload []byte) error {
+// handleRelay forwards a message to the other peer in the session, preserving the original message type.
+func (s *Server) handleRelay(conn *websocket.Conn, msgType string, payload []byte) error {
 	_, session, side, ok := s.store.Lookup(conn)
 	if !ok {
 		return fmt.Errorf("relay: connection not associated with any session")
 	}
-	msg := protocol.SignalMessage{Type: protocol.MsgRelay, Payload: payload}
+	msg := protocol.SignalMessage{Type: msgType, Payload: payload}
 	switch side {
 	case sideSender:
 		if session.receiverConn == nil {

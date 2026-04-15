@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 
 	"github.com/gorilla/websocket"
@@ -140,6 +141,64 @@ func (sc *SignalingClient) WaitAndPong(id *identity.EphemeralIdentity) error {
 		return fmt.Errorf("signaling.WaitAndPong: send pong: %w", err)
 	}
 	return nil
+}
+
+// SendICECandidate sends a trickle ICE candidate to the peer via the signaling server.
+// candidateJSON is the candidate string as produced by pion/ice's OnCandidate callback.
+// A nil/empty payload acts as a gathering-complete sentinel.
+func (sc *SignalingClient) SendICECandidate(candidateJSON []byte) error {
+	if err := sc.conn.WriteJSON(protocol.SignalMessage{
+		Type:    protocol.MsgICECandidate,
+		Payload: candidateJSON,
+	}); err != nil {
+		return fmt.Errorf("signaling.SendICECandidate: %w", err)
+	}
+	return nil
+}
+
+// ReadICECandidate blocks until an ice_candidate message arrives from the peer.
+// Returns the raw candidate bytes for the caller to pass to the ICE agent.
+// A nil return payload signals end-of-gathering from the peer.
+func (sc *SignalingClient) ReadICECandidate() ([]byte, error) {
+	msg, err := sc.readUntil(protocol.MsgICECandidate)
+	if err != nil {
+		return nil, fmt.Errorf("signaling.ReadICECandidate: %w", err)
+	}
+	return msg.Payload, nil
+}
+
+// iceCredentials is the JSON payload for the ice_credentials message.
+type iceCredentials struct {
+	Ufrag string `json:"ufrag"`
+	Pwd   string `json:"pwd"`
+}
+
+// SendICECredentials sends the local ICE ufrag and pwd to the peer.
+func (sc *SignalingClient) SendICECredentials(ufrag, pwd string) error {
+	payload, err := json.Marshal(iceCredentials{Ufrag: ufrag, Pwd: pwd})
+	if err != nil {
+		return fmt.Errorf("signaling.SendICECredentials: marshal: %w", err)
+	}
+	if err := sc.conn.WriteJSON(protocol.SignalMessage{
+		Type:    protocol.MsgICECredentials,
+		Payload: payload,
+	}); err != nil {
+		return fmt.Errorf("signaling.SendICECredentials: send: %w", err)
+	}
+	return nil
+}
+
+// ReadICECredentials blocks until an ice_credentials message arrives from the peer.
+func (sc *SignalingClient) ReadICECredentials() (ufrag, pwd string, err error) {
+	msg, err := sc.readUntil(protocol.MsgICECredentials)
+	if err != nil {
+		return "", "", fmt.Errorf("signaling.ReadICECredentials: %w", err)
+	}
+	var creds iceCredentials
+	if err := json.Unmarshal(msg.Payload, &creds); err != nil {
+		return "", "", fmt.Errorf("signaling.ReadICECredentials: unmarshal: %w", err)
+	}
+	return creds.Ufrag, creds.Pwd, nil
 }
 
 // readUntil reads messages from the server until one with the expected type
