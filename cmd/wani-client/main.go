@@ -126,11 +126,19 @@ func runSend(args []string) error {
 
 	// Re-wait loop: if the receiver disconnects mid-transfer and the signaling
 	// connection is still alive, we wait for the receiver to rejoin.
+	firstWait := true
 	for {
 		fmt.Println("Waiting for receiver...")
-		if err := sc.WaitForPeer(); err != nil {
-			return fmt.Errorf("send: wait for peer: %w", err)
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		waitErr := sc.WaitForPeer(waitCtx)
+		waitCancel()
+		if waitErr != nil {
+			if firstWait {
+				return fmt.Errorf("send: nobody accepted the transfer in time (code: %s)", code)
+			}
+			return fmt.Errorf("send: receiver did not reconnect in time (code: %s)", code)
 		}
+		firstWait = false
 
 		// Fresh per-attempt setup context; release before file transfer.
 		setupCtx, setupCancel := context.WithTimeout(context.Background(), 60*time.Second)

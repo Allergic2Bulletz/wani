@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -74,8 +75,15 @@ func (sc *SignalingClient) JoinSession(code string) error {
 }
 
 // WaitForPeer blocks until the server notifies this client that the peer has
-// joined (session_ready). Called by the sender after CreateSession.
-func (sc *SignalingClient) WaitForPeer() error {
+// joined (session_ready). ctx controls how long to wait; cancel it to abort.
+// Called by the sender after CreateSession.
+func (sc *SignalingClient) WaitForPeer(ctx context.Context) error {
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := sc.conn.SetReadDeadline(deadline); err != nil {
+			return fmt.Errorf("signaling.WaitForPeer: set deadline: %w", err)
+		}
+		defer sc.conn.SetReadDeadline(time.Time{}) //nolint:errcheck
+	}
 	if _, err := sc.readUntil(protocol.MsgSessionReady); err != nil {
 		return fmt.Errorf("signaling.WaitForPeer: %w", err)
 	}

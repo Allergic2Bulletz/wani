@@ -21,6 +21,16 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// quicConfig is shared by both DialQUIC and ListenQUIC.
+// MaxIdleTimeout governs how quickly a dead peer is detected: quic-go closes the
+// connection if no packets are received for this duration. 10s is fast enough that
+// a killed receiver unblocks the sender's re-wait loop within ~10s, while still
+// tolerating brief network hiccups. Active transfers are never idle so this timer
+// only fires when the peer process is truly dead.
+var quicConfig = &quic.Config{
+	MaxIdleTimeout: 10 * time.Second,
+}
+
 // icePacketConn adapts *ice.Conn (net.Conn) to net.PacketConn so quic-go can use it.
 // quic-go requires net.PacketConn; ICE provides a reliable stream-oriented conn over UDP.
 // WriteTo ignores the destination address — ICE handles all routing internally.
@@ -83,7 +93,7 @@ func DialQUIC(ctx context.Context, iceConn *ice.Conn, sharedKey []byte) (*quic.C
 		InsecureSkipVerify: true, //nolint:gosec // auth is via HMAC proof over SPAKE2-derived key
 		NextProtos:         []string{quicNextProto},
 	}
-	conn, err := quic.Dial(ctx, pktConn, iceConn.RemoteAddr(), tlsCfg, nil)
+	conn, err := quic.Dial(ctx, pktConn, iceConn.RemoteAddr(), tlsCfg, quicConfig)
 	if err != nil {
 		return nil, fmt.Errorf("quic.DialQUIC: Dial: %w", err)
 	}
@@ -128,7 +138,7 @@ func ListenQUIC(ctx context.Context, iceConn *ice.Conn, sharedKey []byte) (*quic
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{quicNextProto},
 	}
-	listener, err := quic.Listen(pktConn, tlsCfg, nil)
+	listener, err := quic.Listen(pktConn, tlsCfg, quicConfig)
 	if err != nil {
 		return nil, fmt.Errorf("quic.ListenQUIC: Listen: %w", err)
 	}
