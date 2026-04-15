@@ -1,1 +1,2 @@
 1. SSH into vm using `ssh wani-vm`
+2. When you add external dependencies in Phase 2+ (websocket, pion/ice, etc.), run go mod tidy locally to generate go.sum, then remove cache: false to re-enable caching.
