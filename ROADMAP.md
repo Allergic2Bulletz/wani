@@ -23,7 +23,7 @@
 - [x] Provision cloud VM (DigitalOcean $5/mo or Oracle Cloud Free Tier)
   - Open ports: TCP 443 (WebSocket signaling), UDP range for TURN (when enabled)
 - [x] Manual SCP deploy to VM, verify health endpoint via `curl`
-- [ ] GitHub Actions workflow: **build → SCP → restart** on push to `main`
+- [x] GitHub Actions workflow: **build → SCP → restart** on push to `main`
   - Trigger: `on: push: branches: [main]`
   - Steps: checkout → `go build -o wani-server ./cmd/wani-server` → SCP binary to VM → SSH restart
   - Secrets: `VM_SSH_KEY`, `VM_HOST`, `VM_USER`

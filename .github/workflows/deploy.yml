@@ -33,6 +33,15 @@ jobs:
           source: build/wani-server
           target: ~/
 
+      - name: Copy service file to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: wani-server.service
+          target: ~/
+
       - name: Restart server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -42,5 +51,6 @@ jobs:
           script: |
             chmod +x ~/build/wani-server
             cp ~/build/wani-server ~/wani-server
-            pkill wani-server || true
-            nohup ~/wani-server --addr :8080 > ~/wani-server.log 2>&1 &
+            sudo cp ~/wani-server.service /etc/systemd/system/wani-server.service
+            sudo systemctl daemon-reload
+            sudo systemctl restart wani-server
