@@ -11,5 +11,23 @@ https://mermaid.js.org/
 
 AI Related:
 Multitasking with AI?
-https://code.visualstudio.com/docs/copilot/agents/overview#_hand-off-a-session-to-another-agent
+https://code.visualstudio.com/docs/copilot/agents/overview#_hand-off-a-session-to-anonymous-agent
+
+# UDP Buffer Sizing / icePacketConn Architecture Limitation
+Context: quic-go logs "connection doesn't allow setting of receive buffer size. Not a *net.UDPConn?"
+Root cause: Our P2P path is ICE (pion/ice) → QUIC (quic-go). These two libraries don't share a socket.
+pion/ice manages multiple raw UDP sockets internally (one per network interface). After ICE selects a
+winning candidate pair, it returns an *ice.Conn — a virtual stream over whichever UDP socket won.
+To feed this to quic-go (which needs a net.PacketConn), we wrote icePacketConn, a thin adapter.
+quic-go tries to enlarge the OS UDP receive buffer (200KB → 7MB) by reaching through to the underlying
+OS socket via SyscallConn(). Our icePacketConn can't provide that — there's no single socket to expose.
+The buffer is left at the OS default (~200KB Linux, ~65KB Windows). This matters at high throughput:
+at 1 Gbps+ or high-latency paths, the small buffer can cause packet drops.
+Alternative architecture: use ICE only for hole-punching (finding the winning address pair), then
+open a fresh *net.UDPConn between those addresses and hand THAT to quic-go directly. This would give
+quic-go a real socket it can tune. Requires SO_REUSEPORT to reuse the same local port that punched
+the hole, and careful coordination so ICE keepalives don't interfere. Non-trivial but architecturally
+cleaner. Thruflux avoids this entirely by setting the UDP buffer at the system level (8-16MB via
+installer) and using LSQUIC + libnice which were designed to share a socket.
+See: architecture_design_session.md Decision 3 (NAT Traversal), internal/client/quic.go icePacketConn
 
