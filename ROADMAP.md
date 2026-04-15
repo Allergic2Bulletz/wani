@@ -53,34 +53,34 @@
 *Decisions: 5 (WebSocket), 6 (SPAKE2 Option B), 7 (4-word codes)*
 
 ### 2a: WebSocket Signaling Server
-- [ ] WebSocket upgrade endpoint in wani-server (`/ws`)
-- [ ] Session/room model: sender creates session → gets 4-word pairing code; receiver joins with code
-- [ ] Message types: `create_session`, `join_session`, `relay` (opaque payload forwarding)
-- [ ] Session cleanup: auto-expire sessions after timeout (e.g., 5 minutes)
-- [ ] Error handling: duplicate session, invalid code, session expired
+- [x] WebSocket upgrade endpoint in wani-server (`/ws`)
+- [x] Session/room model: sender creates session → gets 4-word pairing code; receiver joins with code
+- [x] Message types: `create_session`, `join_session`, `relay` (opaque payload forwarding)
+- [x] Session cleanup: auto-expire sessions after timeout (e.g., 5 minutes)
+- [x] Error handling: duplicate session, invalid code, session expired
 
 ### 2b: Pairing Code Generator
-- [ ] Curated wordlist (~2048 words → 11 bits per word → 4 words = 44 bits)
-- [ ] Code format: `word-word-word-word` (lowercase, hyphen-separated)
-- [ ] Cryptographically random word selection (`crypto/rand`)
-- [ ] Place wordlist in `internal/protocol/` — embedded via `//go:embed`
+- [x] Curated wordlist (~2048 words → 11 bits per word → 4 words = 44 bits)
+- [x] Code format: `word-word-word-word` (lowercase, hyphen-separated)
+- [x] Cryptographically random word selection (`crypto/rand`)
+- [x] Place wordlist in `internal/protocol/` — embedded via `//go:embed`
 
 ### 2c: SPAKE2 Key Exchange
-- [ ] Integrate Go SPAKE2 library (RFC 9382 implementation)
-- [ ] Client flow: both peers derive SPAKE2 messages from pairing code → relay via signaling → derive shared secret K
-- [ ] Verify: both clients derive identical K from the same pairing code
-- [ ] Reject: mismatched K (wrong code) produces an error, connection is dropped
+- [x] Integrate Go SPAKE2 library (RFC 9382 implementation)
+- [x] Client flow: both peers derive SPAKE2 messages from pairing code → relay via signaling → derive shared secret K
+- [x] Verify: both clients derive identical K from the same pairing code
+- [x] Reject: mismatched K (wrong code) produces an error, connection is dropped
 
 ### 2d: Ping-Pong Milestone
-- [ ] After SPAKE2 completes, send authenticated message through signaling WebSocket
-- [ ] Message: `HMAC-SHA256(K, "wani-ping")` → peer verifies → responds with `HMAC-SHA256(K, "wani-pong")`
-- [ ] This proves: signaling works, pairing code works, SPAKE2 works, identity verification works
-- [ ] **This is a demo-able milestone** — two terminals, type a code, see "Paired successfully!"
+- [x] After SPAKE2 completes, send authenticated message through signaling WebSocket
+- [x] Message: `HMAC-SHA256(K, "wani-ping")` → peer verifies → responds with `HMAC-SHA256(K, "wani-pong")`
+- [x] This proves: signaling works, pairing code works, SPAKE2 works, identity verification works
+- [x] **This is a demo-able milestone** — two terminals, type a code, see "Paired successfully!"
 
 ### 2e: ICE Candidate Exchange
-- [ ] Extend WebSocket protocol: `ice_candidate` message type
-- [ ] Sender/receiver trickle ICE candidates through signaling server
-- [ ] Server relays candidates opaquely (doesn't parse SDP)
+- [x] Extend WebSocket protocol: `ice_candidate` message type
+- [x] Sender/receiver trickle ICE candidates through signaling server
+- [x] Server relays candidates opaquely (doesn't parse SDP)
 
 **Verification:** Two clients (can be on same machine for now) pair via 4-word code, complete SPAKE2, display "Paired!" after authenticated ping-pong. Wrong code → "Pairing failed."
 
@@ -92,32 +92,32 @@
 *Decisions: 2 (QUIC), 3 (ICE), 8 (manifest-first, per-file resume, xxHash), 12 (encryption layering)*
 
 ### 3a: ICE + QUIC Connection
-- [ ] Integrate `pion/ice`: create ICE agent, gather candidates (host + server-reflexive)
-- [ ] Trickle candidates to peer via signaling (Phase 2e)
-- [ ] ICE connectivity checks → select best candidate pair
-- [ ] Establish QUIC connection over ICE-selected UDP path (`quic-go` over `pion/ice` `net.Conn`)
-- [ ] HMAC identity proof: first QUIC stream message is `HMAC-SHA256(K, "wani-quic-verify")` — peer verifies before allowing file transfer
+- [x] Integrate `pion/ice`: create ICE agent, gather candidates (host + server-reflexive)
+- [x] Trickle candidates to peer via signaling (Phase 2e)
+- [x] ICE connectivity checks → select best candidate pair
+- [x] Establish QUIC connection over ICE-selected UDP path (`quic-go` over `pion/ice` `net.Conn`)
+- [x] HMAC identity proof: first QUIC stream message is `HMAC-SHA256(K, "wani-quic-verify")` — peer verifies before allowing file transfer
 
 ### 3b: Manifest Protocol
-- [ ] Sender scans file tree → builds manifest: `[]FileEntry{Path, Size, XXHash, Compression: "none"}`
-- [ ] Compute xxHash per file during scan (`github.com/cespare/xxhash/v2`)
-- [ ] Send manifest over QUIC control stream (stream 0)
-- [ ] Receiver parses manifest → creates directory structure → sends `ready` response
+- [x] Sender scans file tree → builds manifest: `[]FileEntry{Path, Size, XXHash, Compression: "none"}`
+- [x] Compute xxHash per file during scan (`github.com/cespare/xxhash/v2`)
+- [x] Send manifest over QUIC control stream (stream 0)
+- [x] Receiver parses manifest → creates directory structure → sends `ready` response
 
 ### 3c: File Data Transfer
-- [ ] Sender streams each file over a QUIC stream (one stream per file, or sequential on a data stream)
-- [ ] Receiver writes to disk → computes xxHash → compares against manifest → marks file `complete`
-- [ ] Handle xxHash mismatch: report error, mark file for retry
+- [x] Sender streams each file over a QUIC stream (one stream per file, or sequential on a data stream)
+- [x] Receiver writes to disk → computes xxHash → compares against manifest → marks file `complete`
+- [x] Handle xxHash mismatch: report error, mark file for retry
 
 ### 3d: Per-File Resume
-- [ ] On reconnect: sender sends manifest again; receiver responds with list of already-completed files
-- [ ] Sender skips completed files, resumes from next `pending` file
-- [ ] Resume state stored client-side (e.g., `.wani-resume.json` alongside received files)
+- [x] On reconnect: sender sends manifest again; receiver responds with list of already-completed files
+- [x] Sender skips completed files, resumes from next `pending` file
+- [x] Resume state stored client-side (e.g., `.wani-resume.json` alongside received files)
 
 ### 3e: CLI UX
-- [ ] Sender: `wani-client send <path>` → displays pairing code → waits → shows progress
-- [ ] Receiver: `wani-client receive <code>` → pairs → displays manifest → transfers → done
-- [ ] Progress bar: `[####----] 45% | 450MB/1GB | file 3/7 | eta 12s`
+- [x] Sender: `wani-client send <path>` → displays pairing code → waits → shows progress
+- [x] Receiver: `wani-client receive <code>` → pairs → displays manifest → transfers → done
+- [x] Progress bar: `[####----] 45% | 450MB/1GB | file 3/7 | eta 12s`
 
 **Verification:** Transfer a directory of mixed files (small + large) between two machines on different networks via wani-server. Verify xxHash matches on all files. Kill mid-transfer, restart with same code → resumes from next incomplete file.
 
