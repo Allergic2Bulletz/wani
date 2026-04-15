@@ -27,7 +27,7 @@
   - Trigger: `on: push: branches: [main]`
   - Steps: checkout → `go build -o wani-server ./cmd/wani-server` → SCP binary to VM → SSH restart
   - Secrets: `VM_SSH_KEY`, `VM_HOST`, `VM_USER`
-- [ ] systemd unit file for wani-server (auto-restart on crash, stdout → journald)
+- [x] systemd unit file for wani-server (auto-restart on crash, stdout → journald)
 
 **Verification:** `curl http://<vm-ip>:<port>/health` returns 200. Push a trivial change to `main` → binary is rebuilt and restarted automatically within a few minutes.
 
