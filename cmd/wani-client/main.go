@@ -389,7 +389,7 @@ func runReceive(args []string) error {
 			bar.Finish() //nolint:errcheck
 		}
 		if client.IsPeerClosedError(err) {
-			fmt.Fprintf(os.Stderr, "\nSender disconnected. Resume by running:\n  wani-client receive %s\n", code)
+			fmt.Fprintf(os.Stderr, "\nSender disconnected. Progress saved.\nTo resume: ask the sender to restart, then run:\n  wani-client receive -out %s <new-code>\n", effectiveOutDir)
 			return fmt.Errorf("receive: sender disconnected mid-transfer")
 		}
 		return fmt.Errorf("receive: transfer: %w", err)
