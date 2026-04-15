@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Allergic2Bulletz/wani/internal/client"
@@ -86,7 +88,9 @@ func runSend(args []string) error {
 	if fs.NArg() < 1 {
 		return fmt.Errorf("send: missing path\nusage: wani-client send <path>")
 	}
-	path := fs.Arg(0)
+	// On Windows, PowerShell passes a path ending in \ as a quoted arg that
+	// arrives with a trailing literal ". Strip it and clean the path.
+	path := filepath.Clean(strings.TrimRight(fs.Arg(0), `"`))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -224,6 +228,8 @@ func runReceive(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	// Same Windows trailing-backslash quote artifact fix as in runSend.
+	*outDir = filepath.Clean(strings.TrimRight(*outDir, `"`))
 
 	if fs.NArg() < 1 {
 		return fmt.Errorf("receive: missing pairing code\nusage: wani-client receive [-out <dir>] <code>")

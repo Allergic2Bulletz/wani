@@ -1,3 +1,8 @@
+## TODOs
+
+- [ ] Prompt before overwriting existing files on receive (ask user yes/no per file, overwrite all, or add `--overwrite` flag)
+- [ ] Investigate cross-platform CLI argument parsing — currently there is ad-hoc handling (e.g. stripping trailing `"` characters from pairing codes) but there may be more edge cases across platforms (Windows shell quoting, PowerShell, etc.). Centralize all argument sanitization in one place in `cmd/wani-client/`.
+
 ## Future Considerations
 
 ### UDP Buffer Sizing (quic-go + pion/ice Architecture Limitation)
