@@ -1,6 +1,9 @@
 ## TODOs
 - [x] When sending a directory, the receiving client should automatically recreate the directory structure instead of dumping the contents into the folder wani-client is called from.
+- [ ] Actual graceful exiting/error handling
+- [ ] Related to above: differentiate between failed transfer/dead client and connection issues? (How do we test this?) What do we do with .wani-resume.json if the client dies?
 - [ ] Prompt before overwriting existing files on receive (ask user yes/no per file, overwrite all, or add `--overwrite` flag)
+- [ ] When sending multiple files, compact the transfer bar to just showing the overall progress. If possible, refresh the CLI to show the name/size/details of the current file, but don't create a new line for each file. If the sender/receiver uses a --detailed flag, then instead show a transfer bar for each file in sequence (current behavior.)
 - [ ] Investigate cross-platform CLI argument parsing — currently there is ad-hoc handling (e.g. stripping trailing `"` characters from pairing codes) but there may be more edge cases across platforms (Windows shell quoting, PowerShell, etc.). Centralize all argument sanitization in one place in `cmd/wani-client/`.
 
 ## Future Considerations
