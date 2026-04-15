@@ -90,7 +90,12 @@ func SendFiles(ctx context.Context, conn *quic.Conn, manifest protocol.Manifest,
 }
 
 func sendFile(ctx context.Context, conn *quic.Conn, root string, entry protocol.FileEntry, progress ProgressFunc) error {
+	// When root is a single file (not a directory), root itself is what we open.
+	// filepath.Join(root, entry.Path) would double-append the basename.
 	fullPath := filepath.Join(root, filepath.FromSlash(entry.Path))
+	if info, err := os.Stat(root); err == nil && !info.IsDir() {
+		fullPath = root
+	}
 	f, err := os.Open(fullPath)
 	if err != nil {
 		return fmt.Errorf("client.sendFile open %s: %w", entry.Path, err)
