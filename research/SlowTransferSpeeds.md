@@ -110,6 +110,10 @@ manifest.go reads every file in full (`io.Copy(h, file)`) to compute the xxHash 
 
 In quic.go, both `SetReadDeadline` and `SetWriteDeadline` map to `ice.Conn.SetDeadline` — so setting a read deadline *also* sets the write deadline (and vice versa). If quic-go uses `SetReadDeadline` to implement its periodic read-loop wakeup (a common pattern), that unintentionally arm-drops the write deadline too. Under sustained load this could cause ACK frames to time out, triggering retransmissions and tanking CWND.
 
+**Issue 5 (Secondary ceiling, post-fix): UDP receive buffer sizing**
+
+quic-go attempts to enlarge the OS UDP receive buffer from ~200KB to ~7MB at startup, but can't do so through the `icePacketConn` adapter because it only exposes `net.PacketConn`, not `*net.UDPConn`. This is documented in `TODO.md`. At the current 200 kB/s the buffer drains as fast as it fills — this is not a factor today. However, once Phases 2 and 3 are applied and throughput rises, quic-go also checks for `*net.UDPConn` to enable Generic Segmentation Offload (GSO) and batch receive (GRO). Without those, every QUIC packet requires a separate syscall. At 50+ MB/s this syscall overhead becomes measurable and can impose a throughput ceiling well short of LAN speeds. The architectural fix (ICE for hole-punching only, raw socket for data) is non-trivial and tracked in `TODO.md`; it is out of scope for this pass.
+
 ---
 
 ### Steps
@@ -132,7 +136,7 @@ In manifest.go, same change for the manifest hash scan.
 
 **Phase 4 — Fix `icePacketConn` deadline conflation** (*parallel with Phases 2–3*)
 
-In quic.go, add `readDeadline` and `writeDeadline` fields to the `icePacketConn` struct. `SetReadDeadline` stores its time and calls `SetDeadline` with only the read deadline; `SetWriteDeadline` does the same independently. This decouples them so QUIC can manage them separately.
+In quic.go, add `readDeadline` and `writeDeadline` fields to the `icePacketConn` struct. `SetReadDeadline` stores its time and calls `ice.Conn.SetDeadline` with only that value; `SetWriteDeadline` does the same independently. This decouples them so QUIC can manage read and write deadlines separately without one cancelling the other.
 
 ---
 
@@ -142,15 +146,18 @@ In quic.go, add `readDeadline` and `writeDeadline` fields to the `icePacketConn`
 - manifest.go — fileEntry / BuildManifest
 
 ### Verification
-1. Run `wani-client -debug send ...` before any changes to confirm ICE candidate type
-2. After Phase 2 alone: re-run the >2MB transfer — if speed jumps, QUIC windows were the main culprit
-3. After Phase 3: re-run — expected additional improvement especially on small files and manifest scanning latency
-4. Transfer a 100MB+ file and compare against croc baseline on same link
+1. Run `wani-client -debug send ...` before any changes to confirm the selected ICE pair shows `type=host` (direct LAN), not `type=srflx` (hairpin through public IP — higher RTT makes flow-control stalls worse)
+2. Apply Phase 2 alone first, retest the 2.8MB + 12MB files — a large jump confirms QUIC windows were the primary culprit
+3. Apply Phase 3, retest — expected smaller additional gain, especially on manifest scanning latency
+4. Apply Phase 4, retest sustained transfer to confirm no CWND collapses under load
+5. If speeds after all phases plateau well below expected LAN speeds (e.g., under 50 MB/s), the `icePacketConn` / GSO limitation (Issue 5, `TODO.md`) becomes the next investigation
 
 ### Out of scope
 - Concurrent multi-stream file transfer (sequential is intentional architecture, separate planned feature)
 - Streaming hash during send / removing manifest pre-hash (protocol change, separate task)
+- ICE for hole-punch only, raw socket for data (architectural refactor, tracked in `TODO.md`)
 
----
-
-**One question before you proceed:** Do you want Phase 4 (deadline fix) included in this implementation pass, or would you prefer to defer it until after testing whether Phases 2+3 explain the full slowdown?
+### Decisions
+- UDP buffer sizing (Issue 5) is confirmed **not** the cause of current 200 kB/s speeds; noted as a future architectural concern per `TODO.md`
+- Phase 4 (deadline conflation fix) is included in this implementation pass alongside Phases 2 and 3
+- Double-file-read in `BuildManifest` is deferred — fixing it properly requires a protocol change
