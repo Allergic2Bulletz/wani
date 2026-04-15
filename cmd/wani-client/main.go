@@ -110,26 +110,6 @@ func runSend(args []string) error {
 	}
 	fmt.Printf("Pairing code: %s\n", code)
 	tryWriteClipboard(code)
-	fmt.Println("Waiting for receiver...")
-
-	if err := sc.WaitForPeer(); err != nil {
-		return fmt.Errorf("send: wait for peer: %w", err)
-	}
-
-	id, err := identity.NewEphemeralIdentity(identity.RoleSender, []byte(code))
-	if err != nil {
-		return fmt.Errorf("send: identity: %w", err)
-	}
-	if err := sc.ExchangeSPAKE2(id); err != nil {
-		fmt.Fprintln(os.Stderr, "Pairing failed.")
-		return fmt.Errorf("send: SPAKE2: %w", err)
-	}
-	if err := sc.PingPong(id); err != nil {
-		fmt.Fprintln(os.Stderr, "Pairing failed.")
-		return fmt.Errorf("send: ping-pong: %w", err)
-	}
-
-	fmt.Println("Paired successfully!")
 
 	// Build manifest before ICE (CPU-bound; keeps transfer latency low).
 	fmt.Println("Scanning files...")
@@ -144,89 +124,138 @@ func runSend(args []string) error {
 	}
 	fmt.Printf("Sending %d file(s), %d bytes total\n", totalFiles, totalBytes)
 
-	// ICE: gather and connect (controlling = sender).
-	fmt.Println("Establishing P2P connection...")
-	agent, err := client.NewICEAgent(nil)
-	if err != nil {
-		return fmt.Errorf("send: ICE agent: %w", err)
-	}
-	iceConn, err := client.GatherAndConnect(ctx, agent, sc, true, debugLogf())
-	if err != nil {
-		return fmt.Errorf("send: ICE connect: %w", err)
-	}
-
-	// QUIC over ICE.
-	quicConn, err := client.DialQUIC(ctx, iceConn, id.SharedSecret())
-	if err != nil {
-		return fmt.Errorf("send: QUIC dial: %w", err)
-	}
-	defer quicConn.CloseWithError(0, "done")
-
-	// Manifest exchange.
-	resp, err := client.SendManifest(ctx, quicConn, manifest)
-	if err != nil {
-		return fmt.Errorf("send: manifest: %w", err)
-	}
-	if resp.Status != "ready" {
-		return fmt.Errorf("send: receiver not ready: %s", resp.Status)
-	}
-
-	// Release the setup deadline — file transfer has no time limit.
-	cancel()
-	ctx = context.Background()
-
-	// File transfer.
-	skipped := len(resp.Completed)
-	if skipped > 0 {
-		fmt.Printf("Resuming: skipping %d already-received file(s)\n", skipped)
-	}
-	idx := skipped
-	done := make(map[string]bool, skipped)
-	for _, p := range resp.Completed {
-		done[p] = true
-	}
-	var bar *progressbar.ProgressBar
-	var lastPath string
-	progress := func(filePath string, written, total int64) {
-		if done[filePath] {
-			return
+	// Re-wait loop: if the receiver disconnects mid-transfer and the signaling
+	// connection is still alive, we wait for the receiver to rejoin.
+	for {
+		fmt.Println("Waiting for receiver...")
+		if err := sc.WaitForPeer(); err != nil {
+			return fmt.Errorf("send: wait for peer: %w", err)
 		}
-		if filePath != lastPath {
-			if bar != nil {
-				bar.Finish() //nolint:errcheck
-				fmt.Println()
+
+		// Fresh per-attempt setup context; release before file transfer.
+		setupCtx, setupCancel := context.WithTimeout(context.Background(), 60*time.Second)
+
+		id, err := identity.NewEphemeralIdentity(identity.RoleSender, []byte(code))
+		if err != nil {
+			setupCancel()
+			return fmt.Errorf("send: identity: %w", err)
+		}
+		if err := sc.ExchangeSPAKE2(id); err != nil {
+			setupCancel()
+			fmt.Fprintln(os.Stderr, "Pairing failed.")
+			return fmt.Errorf("send: SPAKE2: %w", err)
+		}
+		if err := sc.PingPong(id); err != nil {
+			setupCancel()
+			fmt.Fprintln(os.Stderr, "Pairing failed.")
+			return fmt.Errorf("send: ping-pong: %w", err)
+		}
+
+		fmt.Println("Paired successfully!")
+
+		// ICE: gather and connect (controlling = sender).
+		fmt.Println("Establishing P2P connection...")
+		agent, err := client.NewICEAgent(nil)
+		if err != nil {
+			setupCancel()
+			return fmt.Errorf("send: ICE agent: %w", err)
+		}
+		iceConn, err := client.GatherAndConnect(setupCtx, agent, sc, true, debugLogf())
+		if err != nil {
+			setupCancel()
+			return fmt.Errorf("send: ICE connect: %w", err)
+		}
+
+		// QUIC over ICE.
+		quicConn, err := client.DialQUIC(setupCtx, iceConn, id.SharedSecret())
+		if err != nil {
+			setupCancel()
+			return fmt.Errorf("send: QUIC dial: %w", err)
+		}
+
+		// Manifest exchange.
+		resp, err := client.SendManifest(setupCtx, quicConn, manifest)
+		if err != nil {
+			quicConn.CloseWithError(0, "done") //nolint:errcheck
+			setupCancel()
+			return fmt.Errorf("send: manifest: %w", err)
+		}
+		if resp.Status != "ready" {
+			quicConn.CloseWithError(0, "done") //nolint:errcheck
+			setupCancel()
+			return fmt.Errorf("send: receiver not ready: %s", resp.Status)
+		}
+
+		// Release the setup deadline — file transfer has no time limit.
+		setupCancel()
+		transferCtx := context.Background()
+
+		// File transfer.
+		skipped := len(resp.Completed)
+		if skipped > 0 {
+			fmt.Printf("Resuming: skipping %d already-received file(s)\n", skipped)
+		}
+		idx := skipped
+		done := make(map[string]bool, skipped)
+		for _, p := range resp.Completed {
+			done[p] = true
+		}
+		var bar *progressbar.ProgressBar
+		var lastPath string
+		progress := func(filePath string, written, total int64) {
+			if done[filePath] {
+				return
 			}
-			idx++
-			lastPath = filePath
-			bar = progressbar.NewOptions64(
-				total,
-				progressbar.OptionSetDescription(fmt.Sprintf("[%d/%d] %s", idx, totalFiles, filePath)),
-				progressbar.OptionSetWriter(os.Stderr),
-				progressbar.OptionShowBytes(true),
-				progressbar.OptionSetWidth(40),
-				progressbar.OptionThrottle(65*time.Millisecond),
-				progressbar.OptionShowCount(),
-				progressbar.OptionOnCompletion(func() { fmt.Fprintln(os.Stderr) }),
-				progressbar.OptionSpinnerType(14),
-				progressbar.OptionFullWidth(),
-				progressbar.OptionSetRenderBlankState(true),
-			)
+			if filePath != lastPath {
+				if bar != nil {
+					bar.Finish() //nolint:errcheck
+					fmt.Println()
+				}
+				idx++
+				lastPath = filePath
+				bar = progressbar.NewOptions64(
+					total,
+					progressbar.OptionSetDescription(fmt.Sprintf("[%d/%d] %s", idx, totalFiles, filePath)),
+					progressbar.OptionSetWriter(os.Stderr),
+					progressbar.OptionShowBytes(true),
+					progressbar.OptionSetWidth(40),
+					progressbar.OptionThrottle(65*time.Millisecond),
+					progressbar.OptionShowCount(),
+					progressbar.OptionOnCompletion(func() { fmt.Fprintln(os.Stderr) }),
+					progressbar.OptionSpinnerType(14),
+					progressbar.OptionFullWidth(),
+					progressbar.OptionSetRenderBlankState(true),
+				)
+			}
+			if bar != nil {
+				bar.Set64(written) //nolint:errcheck
+			}
 		}
-		if bar != nil {
-			bar.Set64(written) //nolint:errcheck
-		}
-	}
-	if err := client.SendFiles(ctx, quicConn, manifest, resp, path, progress); err != nil {
+
+		transferErr := client.SendFiles(transferCtx, quicConn, manifest, resp, path, progress)
 		if bar != nil {
 			bar.Finish() //nolint:errcheck
 		}
-		return fmt.Errorf("send: transfer: %w", err)
+		quicConn.CloseWithError(0, "done") //nolint:errcheck
+
+		if transferErr == nil {
+			fmt.Printf("Transfer complete: %d file(s)\n", totalFiles)
+			return nil
+		}
+
+		// Differentiate: peer closed the connection (receiver died) vs. a real
+		// transfer error (hash mismatch, file create failure, etc.).
+		if !client.IsPeerClosedError(transferErr) {
+			return fmt.Errorf("send: transfer: %w", transferErr)
+		}
+
+		// Receiver disconnected mid-transfer. Wait for rejoin if signaling is alive.
+		if pingErr := sc.Ping(); pingErr != nil {
+			return fmt.Errorf("send: receiver disconnected and signaling connection lost — restart the transfer")
+		}
+		fmt.Printf("\nReceiver disconnected. Waiting for rejoin on code: %s\n", code)
+		// Loop back to WaitForPeer.
 	}
-	if bar != nil {
-		bar.Finish() //nolint:errcheck
-	}
-	fmt.Printf("Transfer complete: %d file(s)\n", totalFiles)
-	return nil
 }
 
 func runReceive(args []string) error {
@@ -350,6 +379,10 @@ func runReceive(args []string) error {
 	if err := client.ReceiveFiles(ctx, quicConn, manifest, skip, effectiveOutDir, progress); err != nil {
 		if bar != nil {
 			bar.Finish() //nolint:errcheck
+		}
+		if client.IsPeerClosedError(err) {
+			fmt.Fprintf(os.Stderr, "\nSender disconnected. Resume by running:\n  wani-client receive %s\n", code)
+			return fmt.Errorf("receive: sender disconnected mid-transfer")
 		}
 		return fmt.Errorf("receive: transfer: %w", err)
 	}

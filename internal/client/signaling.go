@@ -36,6 +36,12 @@ func (sc *SignalingClient) Close() error {
 	return sc.conn.Close()
 }
 
+// Ping sends a WebSocket ping to check whether the signaling connection is
+// still alive. Returns nil if the connection is responsive.
+func (sc *SignalingClient) Ping() error {
+	return sc.conn.WriteMessage(websocket.PingMessage, nil)
+}
+
 // CreateSession asks the server to create a new session.
 // Returns the 4-word pairing code assigned by the server.
 func (sc *SignalingClient) CreateSession() (string, error) {

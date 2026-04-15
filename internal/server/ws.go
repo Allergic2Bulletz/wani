@@ -114,13 +114,22 @@ func (s *Server) handleRelay(conn *websocket.Conn, msgType string, payload []byt
 	}
 }
 
-// cleanupConn removes a connection and its session from the store on disconnect.
+// cleanupConn handles a WebSocket disconnection based on which side left.
+// If the receiver disconnects the session enters dormancy (receiver may rejoin).
+// If the sender disconnects the entire session is deleted.
 func (s *Server) cleanupConn(conn *websocket.Conn) {
-	code, _, _, ok := s.store.Lookup(conn)
+	code, _, side, ok := s.store.Lookup(conn)
 	if !ok {
 		return
 	}
-	s.store.Delete(code)
+	switch side {
+	case sideReceiver:
+		// Keep session alive so the receiver can rejoin with the same code.
+		s.store.DisconnectReceiver(code)
+	default:
+		// Sender left (or unknown) — no point keeping the session.
+		s.store.Delete(code)
+	}
 }
 
 // writeErr sends an error message to a single connection (best-effort).

@@ -11,6 +11,10 @@ import (
 const sessionTTL = 5 * time.Minute
 const cleanupInterval = 1 * time.Minute
 
+// reconnectTTL is how long a sender-only session persists after the receiver
+// disconnects, giving the receiver a window to rejoin with the same code.
+const reconnectTTL = 15 * time.Minute
+
 // connSide identifies which side of a session a connection belongs to.
 type connSide int
 
@@ -28,6 +32,9 @@ type Session struct {
 	receiverConn *websocket.Conn
 	receiverMu   sync.Mutex
 	expiresAt    time.Time
+	// receiverGone is true when the receiver has disconnected but the session
+	// is still alive so the receiver can rejoin with the same code.
+	receiverGone bool
 }
 
 // writeToSender writes a JSON message to the sender connection under its mutex.
@@ -78,7 +85,9 @@ func (ss *SessionStore) CreateSender(code string, conn *websocket.Conn) *Session
 }
 
 // AddReceiver attaches a receiver connection to an existing session.
-// Returns (session, true) on success, (nil, false) if code not found or already has receiver.
+// Returns (session, true) on success. Fails if the session does not exist,
+// or if a receiver is already actively connected.
+// A receiver that previously disconnected (receiverGone == true) may rejoin.
 func (ss *SessionStore) AddReceiver(code string, conn *websocket.Conn) (*Session, bool) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -86,10 +95,19 @@ func (ss *SessionStore) AddReceiver(code string, conn *websocket.Conn) (*Session
 	if !ok {
 		return nil, false
 	}
-	if s.receiverConn != nil {
+	// Reject if a live receiver is already connected.
+	if s.receiverConn != nil && !s.receiverGone {
 		return nil, false
 	}
+	// Remove old conn mappings if this is a rejoin.
+	if s.receiverConn != nil {
+		delete(ss.connToCode, s.receiverConn)
+		delete(ss.connToSide, s.receiverConn)
+	}
 	s.receiverConn = conn
+	s.receiverGone = false
+	// Refresh the session TTL on rejoin.
+	s.expiresAt = time.Now().Add(sessionTTL)
 	ss.connToCode[conn] = code
 	ss.connToSide[conn] = sideReceiver
 	return s, true
@@ -106,6 +124,25 @@ func (ss *SessionStore) Lookup(conn *websocket.Conn) (code string, s *Session, s
 	s = ss.sessions[code]
 	side = ss.connToSide[conn]
 	return code, s, side, true
+}
+
+// DisconnectReceiver marks the receiver as gone and extends the session TTL
+// to give the receiver a window to rejoin. The old connection is removed from
+// the lookup maps but the session entry is kept alive.
+func (ss *SessionStore) DisconnectReceiver(code string) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	s, ok := ss.sessions[code]
+	if !ok {
+		return
+	}
+	if s.receiverConn != nil {
+		delete(ss.connToCode, s.receiverConn)
+		delete(ss.connToSide, s.receiverConn)
+		s.receiverConn = nil
+	}
+	s.receiverGone = true
+	s.expiresAt = time.Now().Add(reconnectTTL)
 }
 
 // Delete removes a session and all its connection mappings.

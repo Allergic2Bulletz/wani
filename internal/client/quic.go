@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -48,6 +49,24 @@ func (p *icePacketConn) SetWriteDeadline(t time.Time) error {
 
 const quicNextProto = "wani"
 const quicVerifyLabel = "wani-quic-verify"
+
+// IsPeerClosedError reports whether err is the normal application-level close
+// sent by the remote peer when it finishes (CloseWithError(0, "done")).
+// This distinguishes an expected peer disconnect from a real transfer failure.
+func IsPeerClosedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var appErr *quic.ApplicationError
+	if errors.As(err, &appErr) {
+		return appErr.ErrorCode == 0
+	}
+	var idleErr *quic.IdleTimeoutError
+	if errors.As(err, &idleErr) {
+		return true
+	}
+	return false
+}
 
 // quicHMAC returns HMAC-SHA256(key, quicVerifyLabel).
 func quicHMAC(key []byte) []byte {
