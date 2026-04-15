@@ -13,6 +13,42 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// resumeState tracks which files have been successfully received in a previous run.
+type resumeState struct {
+	Completed []string `json:"completed"`
+}
+
+func resumeStatePath(destDir string) string {
+	return filepath.Join(destDir, ".wani-resume.json")
+}
+
+func loadResumeState(destDir string) resumeState {
+	data, err := os.ReadFile(resumeStatePath(destDir))
+	if err != nil {
+		return resumeState{}
+	}
+	var s resumeState
+	if err := json.Unmarshal(data, &s); err != nil {
+		return resumeState{}
+	}
+	return s
+}
+
+func saveResumeState(destDir string, state resumeState) error {
+	data, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("client.saveResumeState: marshal: %w", err)
+	}
+	if err := os.WriteFile(resumeStatePath(destDir), data, 0o600); err != nil {
+		return fmt.Errorf("client.saveResumeState: write: %w", err)
+	}
+	return nil
+}
+
+func deleteResumeState(destDir string) {
+	os.Remove(resumeStatePath(destDir)) //nolint:errcheck
+}
+
 // ProgressFunc is called after each chunk written during file transfer.
 // bytesWritten is the running total transferred so far for this file.
 type ProgressFunc func(path string, bytesWritten, totalBytes int64)
@@ -44,44 +80,60 @@ func SendManifest(ctx context.Context, conn *quic.Conn, manifest protocol.Manife
 }
 
 // ReceiveManifest accepts the manifest stream from the sender, creates required directories
-// under destDir, and sends a ManifestResponse indicating readiness. Returns the received manifest.
-func ReceiveManifest(ctx context.Context, conn *quic.Conn, destDir string) (protocol.Manifest, error) {
+// under destDir, and sends a ManifestResponse indicating readiness. Returns the received manifest
+// and the list of already-completed file paths (from a previous partial transfer).
+func ReceiveManifest(ctx context.Context, conn *quic.Conn, destDir string) (protocol.Manifest, []string, error) {
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
-		return protocol.Manifest{}, fmt.Errorf("client.ReceiveManifest: AcceptStream: %w", err)
+		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: AcceptStream: %w", err)
 	}
 	defer stream.Close()
 
 	var manifest protocol.Manifest
 	dec := json.NewDecoder(stream)
 	if err := dec.Decode(&manifest); err != nil {
-		return protocol.Manifest{}, fmt.Errorf("client.ReceiveManifest: decode: %w", err)
+		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: decode: %w", err)
 	}
 
 	// Pre-create all destination directories.
 	for _, entry := range manifest.Files {
 		dir := filepath.Join(destDir, filepath.FromSlash(filepath.Dir(entry.Path)))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return protocol.Manifest{}, fmt.Errorf("client.ReceiveManifest: mkdir %s: %w", dir, err)
+			return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: mkdir %s: %w", dir, err)
 		}
 	}
 
+	state := loadResumeState(destDir)
+	completed := state.Completed
+	if completed == nil {
+		completed = []string{}
+	}
 	resp := protocol.ManifestResponse{
 		Status:    "ready",
-		Completed: []string{},
+		Completed: completed,
 	}
 	enc := json.NewEncoder(stream)
 	if err := enc.Encode(resp); err != nil {
-		return protocol.Manifest{}, fmt.Errorf("client.ReceiveManifest: encode response: %w", err)
+		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: encode response: %w", err)
 	}
 
-	return manifest, nil
+	return manifest, completed, nil
 }
 
 // SendFiles sends each file in manifest sequentially — one QUIC stream per file.
-// progress may be nil. An error from the receiver side (e.g. hash mismatch) is returned.
-func SendFiles(ctx context.Context, conn *quic.Conn, manifest protocol.Manifest, root string, progress ProgressFunc) error {
+// Files listed in resp.Completed are skipped (already received). progress may be nil.
+func SendFiles(ctx context.Context, conn *quic.Conn, manifest protocol.Manifest, resp protocol.ManifestResponse, root string, progress ProgressFunc) error {
+	done := make(map[string]bool, len(resp.Completed))
+	for _, p := range resp.Completed {
+		done[p] = true
+	}
 	for _, entry := range manifest.Files {
+		if done[entry.Path] {
+			if progress != nil {
+				progress(entry.Path, entry.Size, entry.Size)
+			}
+			continue
+		}
 		if err := sendFile(ctx, conn, root, entry, progress); err != nil {
 			return err
 		}
@@ -133,13 +185,21 @@ func sendFile(ctx context.Context, conn *quic.Conn, root string, entry protocol.
 }
 
 // ReceiveFiles accepts one QUIC stream per file, writes each to destDir, and verifies
-// the xxHash-64 digest against the manifest. progress may be nil.
-func ReceiveFiles(ctx context.Context, conn *quic.Conn, manifest protocol.Manifest, destDir string, progress ProgressFunc) error {
+// the xxHash-64 digest against the manifest. Files listed in skip are counted as already done.
+// progress may be nil. Clears the resume state on full success.
+func ReceiveFiles(ctx context.Context, conn *quic.Conn, manifest protocol.Manifest, skip map[string]bool, destDir string, progress ProgressFunc) error {
 	for _, entry := range manifest.Files {
+		if skip[entry.Path] {
+			if progress != nil {
+				progress(entry.Path, entry.Size, entry.Size)
+			}
+			continue
+		}
 		if err := receiveFile(ctx, conn, destDir, entry, progress); err != nil {
 			return err
 		}
 	}
+	deleteResumeState(destDir)
 	return nil
 }
 
@@ -180,6 +240,12 @@ func receiveFile(ctx context.Context, conn *quic.Conn, destDir string, entry pro
 	if _, err := stream.Write([]byte("ok")); err != nil {
 		return fmt.Errorf("client.receiveFile %s: write ack: %w", entry.Path, err)
 	}
+
+	// Persist progress so an interrupted transfer can resume.
+	s := loadResumeState(destDir)
+	s.Completed = append(s.Completed, entry.Path)
+	saveResumeState(destDir, s) //nolint:errcheck
+
 	return nil
 }
 

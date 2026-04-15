@@ -9,6 +9,7 @@ import (
 
 	"github.com/Allergic2Bulletz/wani/internal/client"
 	"github.com/Allergic2Bulletz/wani/internal/identity"
+	"github.com/schollz/progressbar/v3"
 )
 
 func main() {
@@ -19,7 +20,11 @@ func main() {
 }
 
 // Global flags — must come before the subcommand name on the command line.
-var serverURL = flag.String("server", "ws://localhost:8080/ws", "signaling server WebSocket URL")
+//
+// defaultServerURL is set at build time via -ldflags "-X 'main.defaultServerURL=...'"
+// from build.sh (reads wani-server-ip from config.json). Falls back to localhost.
+var defaultServerURL = "ws://localhost:8080/ws"
+var serverURL = flag.String("server", defaultServerURL, "signaling server WebSocket URL")
 var debug = flag.Bool("debug", false, "print ICE candidate and connection details")
 
 func run() error {
@@ -97,6 +102,7 @@ func runSend(args []string) error {
 		return fmt.Errorf("send: create session: %w", err)
 	}
 	fmt.Printf("Pairing code: %s\n", code)
+	tryWriteClipboard(code)
 	fmt.Println("Waiting for receiver...")
 
 	if err := sc.WaitForPeer(); err != nil {
@@ -159,17 +165,56 @@ func runSend(args []string) error {
 	}
 
 	// File transfer.
+	skipped := len(resp.Completed)
+	if skipped > 0 {
+		fmt.Printf("Resuming: skipping %d already-received file(s)\n", skipped)
+	}
+	idx := skipped
+	done := make(map[string]bool, skipped)
+	for _, p := range resp.Completed {
+		done[p] = true
+	}
+	var bar *progressbar.ProgressBar
+	var lastPath string
 	progress := func(filePath string, written, total int64) {
-		if total > 0 {
-			pct := written * 100 / total
-			fmt.Printf("\r  %s  %d/%d bytes (%d%%)   ", filePath, written, total, pct)
+		if done[filePath] {
+			return
+		}
+		if filePath != lastPath {
+			if bar != nil {
+				bar.Finish() //nolint:errcheck
+				fmt.Println()
+			}
+			idx++
+			lastPath = filePath
+			bar = progressbar.NewOptions64(
+				total,
+				progressbar.OptionSetDescription(fmt.Sprintf("[%d/%d] %s", idx, totalFiles, filePath)),
+				progressbar.OptionSetWriter(os.Stderr),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionSetWidth(40),
+				progressbar.OptionThrottle(65*time.Millisecond),
+				progressbar.OptionShowCount(),
+				progressbar.OptionOnCompletion(func() { fmt.Fprintln(os.Stderr) }),
+				progressbar.OptionSpinnerType(14),
+				progressbar.OptionFullWidth(),
+				progressbar.OptionSetRenderBlankState(true),
+			)
+		}
+		if bar != nil {
+			bar.Set64(written) //nolint:errcheck
 		}
 	}
-	if err := client.SendFiles(ctx, quicConn, manifest, path, progress); err != nil {
-		fmt.Println()
+	if err := client.SendFiles(ctx, quicConn, manifest, resp, path, progress); err != nil {
+		if bar != nil {
+			bar.Finish() //nolint:errcheck
+		}
 		return fmt.Errorf("send: transfer: %w", err)
 	}
-	fmt.Printf("\nTransfer complete: %d file(s)\n", totalFiles)
+	if bar != nil {
+		bar.Finish() //nolint:errcheck
+	}
+	fmt.Printf("Transfer complete: %d file(s)\n", totalFiles)
 	return nil
 }
 
@@ -232,22 +277,62 @@ func runReceive(args []string) error {
 	defer quicConn.CloseWithError(0, "done")
 
 	// Manifest exchange + file receive.
-	manifest, err := client.ReceiveManifest(ctx, quicConn, *outDir)
+	manifest, completed, err := client.ReceiveManifest(ctx, quicConn, *outDir)
 	if err != nil {
 		return fmt.Errorf("receive: manifest: %w", err)
 	}
 	fmt.Printf("Incoming: %d file(s)\n", len(manifest.Files))
 
+	skip := make(map[string]bool, len(completed))
+	for _, p := range completed {
+		skip[p] = true
+	}
+	if len(skip) > 0 {
+		fmt.Printf("Resuming: %d file(s) already received\n", len(skip))
+	}
+
+	totalFiles := len(manifest.Files)
+	idx := len(skip)
+	var bar *progressbar.ProgressBar
+	var lastPath string
 	progress := func(filePath string, written, total int64) {
-		if total > 0 {
-			pct := written * 100 / total
-			fmt.Printf("\r  %s  %d/%d bytes (%d%%)   ", filePath, written, total, pct)
+		if skip[filePath] {
+			return
+		}
+		if filePath != lastPath {
+			if bar != nil {
+				bar.Finish() //nolint:errcheck
+				fmt.Println()
+			}
+			idx++
+			lastPath = filePath
+			bar = progressbar.NewOptions64(
+				total,
+				progressbar.OptionSetDescription(fmt.Sprintf("[%d/%d] %s", idx, totalFiles, filePath)),
+				progressbar.OptionSetWriter(os.Stderr),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionSetWidth(40),
+				progressbar.OptionThrottle(65*time.Millisecond),
+				progressbar.OptionShowCount(),
+				progressbar.OptionOnCompletion(func() { fmt.Fprintln(os.Stderr) }),
+				progressbar.OptionSpinnerType(14),
+				progressbar.OptionFullWidth(),
+				progressbar.OptionSetRenderBlankState(true),
+			)
+		}
+		if bar != nil {
+			bar.Set64(written) //nolint:errcheck
 		}
 	}
-	if err := client.ReceiveFiles(ctx, quicConn, manifest, *outDir, progress); err != nil {
-		fmt.Println()
+	if err := client.ReceiveFiles(ctx, quicConn, manifest, skip, *outDir, progress); err != nil {
+		if bar != nil {
+			bar.Finish() //nolint:errcheck
+		}
 		return fmt.Errorf("receive: transfer: %w", err)
 	}
-	fmt.Printf("\nReceived %d file(s) → %s\n", len(manifest.Files), *outDir)
+	if bar != nil {
+		bar.Finish() //nolint:errcheck
+	}
+	fmt.Printf("Received %d file(s) → %s\n", len(manifest.Files), *outDir)
 	return nil
 }
