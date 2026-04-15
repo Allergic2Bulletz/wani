@@ -1,3 +1,13 @@
 3/26/2026: Created repo
 4/03/2026: Research technologies, find solutions (Thruflux) | 2hr (2 hr)
 4/08/2026: Tech investigation, architecture design | 3hr (5 hr) 
+4/09/2026: VM Setup for hosting wani-server | 2hr (7 hr)
+4/13/2026: Remote Testing/Dev Environment Setup | 3hr (10 hr)
+4/14/2026: Preliminary client-server communication | 2hr (12 hr)
+4/14/2026: Debugging automatic Github actions deployment | 2hr (14 hr)
+4/14/2026: P2P file transfer implementation | 6hr (20 hr)
+4/14/2026: Windows Security Trojan False Positive Research | 1hr (21 hr)
+4/15/2026: Testing and debugging multi-file transfers, recursive directories, cross-platform transfers | 3hr (24 hr)
+4/15/2026: Upgrade CLI QoL behavior, file transfer resuming | 3hr (27 hr)
+4/15/2026: Troubleshoot CLI parsing | 1hr (28 hr)
+4/15/2026: Enhanced project documentation | 
