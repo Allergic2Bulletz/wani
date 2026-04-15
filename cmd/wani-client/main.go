@@ -293,11 +293,14 @@ func runReceive(args []string) error {
 	defer quicConn.CloseWithError(0, "done")
 
 	// Manifest exchange + file receive.
-	manifest, completed, err := client.ReceiveManifest(ctx, quicConn, *outDir)
+	manifest, effectiveOutDir, completed, err := client.ReceiveManifest(ctx, quicConn, *outDir)
 	if err != nil {
 		return fmt.Errorf("receive: manifest: %w", err)
 	}
 	fmt.Printf("Incoming: %d file(s)\n", len(manifest.Files))
+	if effectiveOutDir != *outDir {
+		fmt.Printf("Destination: %s\n", effectiveOutDir)
+	}
 
 	skip := make(map[string]bool, len(completed))
 	for _, p := range completed {
@@ -344,7 +347,7 @@ func runReceive(args []string) error {
 			bar.Set64(written) //nolint:errcheck
 		}
 	}
-	if err := client.ReceiveFiles(ctx, quicConn, manifest, skip, *outDir, progress); err != nil {
+	if err := client.ReceiveFiles(ctx, quicConn, manifest, skip, effectiveOutDir, progress); err != nil {
 		if bar != nil {
 			bar.Finish() //nolint:errcheck
 		}
@@ -353,6 +356,6 @@ func runReceive(args []string) error {
 	if bar != nil {
 		bar.Finish() //nolint:errcheck
 	}
-	fmt.Printf("Received %d file(s) → %s\n", len(manifest.Files), *outDir)
+	fmt.Printf("Received %d file(s) → %s\n", len(manifest.Files), effectiveOutDir)
 	return nil
 }

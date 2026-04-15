@@ -80,30 +80,37 @@ func SendManifest(ctx context.Context, conn *quic.Conn, manifest protocol.Manife
 }
 
 // ReceiveManifest accepts the manifest stream from the sender, creates required directories
-// under destDir, and sends a ManifestResponse indicating readiness. Returns the received manifest
+// under destDir, and sends a ManifestResponse indicating readiness. Returns the received manifest,
+// the effective destination directory (destDir/<RootName> for directory sends, else destDir),
 // and the list of already-completed file paths (from a previous partial transfer).
-func ReceiveManifest(ctx context.Context, conn *quic.Conn, destDir string) (protocol.Manifest, []string, error) {
+func ReceiveManifest(ctx context.Context, conn *quic.Conn, destDir string) (protocol.Manifest, string, []string, error) {
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
-		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: AcceptStream: %w", err)
+		return protocol.Manifest{}, "", nil, fmt.Errorf("client.ReceiveManifest: AcceptStream: %w", err)
 	}
 	defer stream.Close()
 
 	var manifest protocol.Manifest
 	dec := json.NewDecoder(stream)
 	if err := dec.Decode(&manifest); err != nil {
-		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: decode: %w", err)
+		return protocol.Manifest{}, "", nil, fmt.Errorf("client.ReceiveManifest: decode: %w", err)
+	}
+
+	// When the sender sent a directory, recreate it under destDir.
+	effectiveDestDir := destDir
+	if manifest.RootName != "" {
+		effectiveDestDir = filepath.Join(destDir, manifest.RootName)
 	}
 
 	// Pre-create all destination directories.
 	for _, entry := range manifest.Files {
-		dir := filepath.Join(destDir, filepath.FromSlash(filepath.Dir(entry.Path)))
+		dir := filepath.Join(effectiveDestDir, filepath.FromSlash(filepath.Dir(entry.Path)))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: mkdir %s: %w", dir, err)
+			return protocol.Manifest{}, "", nil, fmt.Errorf("client.ReceiveManifest: mkdir %s: %w", dir, err)
 		}
 	}
 
-	state := loadResumeState(destDir)
+	state := loadResumeState(effectiveDestDir)
 	completed := state.Completed
 	if completed == nil {
 		completed = []string{}
@@ -114,10 +121,10 @@ func ReceiveManifest(ctx context.Context, conn *quic.Conn, destDir string) (prot
 	}
 	enc := json.NewEncoder(stream)
 	if err := enc.Encode(resp); err != nil {
-		return protocol.Manifest{}, nil, fmt.Errorf("client.ReceiveManifest: encode response: %w", err)
+		return protocol.Manifest{}, "", nil, fmt.Errorf("client.ReceiveManifest: encode response: %w", err)
 	}
 
-	return manifest, completed, nil
+	return manifest, effectiveDestDir, completed, nil
 }
 
 // SendFiles sends each file in manifest sequentially — one QUIC stream per file.

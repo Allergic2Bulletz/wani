@@ -34,6 +34,7 @@ func BuildManifest(root string) (protocol.Manifest, error) {
 	}
 
 	// Directory: walk and record every regular file.
+	manifest := protocol.Manifest{RootName: filepath.Base(root)}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -64,7 +65,8 @@ func BuildManifest(root string) (protocol.Manifest, error) {
 		return protocol.Manifest{}, fmt.Errorf("client.BuildManifest: walk: %w", err)
 	}
 
-	return protocol.Manifest{Files: entries}, nil
+	manifest.Files = entries
+	return manifest, nil
 }
 
 // fileEntry opens path, reads its full contents to compute the xxHash-64 digest,

@@ -15,7 +15,8 @@ type FileEntry struct {
 
 // Manifest is the file inventory sent by the sender before any data transfer.
 type Manifest struct {
-	Files []FileEntry `json:"files"`
+	Files    []FileEntry `json:"files"`
+	RootName string      `json:"root_name,omitempty"` // base name of the source directory; empty for single-file sends
 }
 
 // ManifestResponse is the receiver's acknowledgement after parsing the manifest.
