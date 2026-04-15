@@ -37,7 +37,7 @@ internal/identity/  # Identity interface + EphemeralIdentity (SPAKE2)
 
 ## Agent Behavior
 
-- **Do not auto-implement planned features.** If a reported issue is best solved by a feature already on the roadmap, stop and report: (1) what the root cause is, (2) which planned feature resolves it, and (3) any practical workarounds available right now. Do not begin implementing the planned feature without explicit instruction.
+- **Do not auto-implement planned features when resolving issues.** If a reported issue is best solved by a feature already on the roadmap, stop and report: (1) what the root cause is, (2) which planned feature resolves it, and (3) any practical workarounds available right now. Do not begin implementing the planned feature without explicit instruction.
 
 ## Conventions
 
