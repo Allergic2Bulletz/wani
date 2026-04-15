@@ -18,25 +18,34 @@ func main() {
 	}
 }
 
+// Global flags — must come before the subcommand name on the command line.
+var serverURL = flag.String("server", "ws://localhost:8080/ws", "signaling server WebSocket URL")
+
 func run() error {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: wani-client <command> [options]")
+	flag.Parse()
+	args := flag.Args()
+
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: wani-client [options] <command> [args]")
+		fmt.Fprintln(os.Stderr, "options:")
+		fmt.Fprintln(os.Stderr, "  -server string  signaling server WebSocket URL (default ws://localhost:8080/ws)")
 		fmt.Fprintln(os.Stderr, "commands:")
-		fmt.Fprintln(os.Stderr, "  stun                    — discover public address")
-		fmt.Fprintln(os.Stderr, "  send [options] <path>   — send file or directory")
-		fmt.Fprintln(os.Stderr, "  receive [options] <code>— receive transfer")
+		fmt.Fprintln(os.Stderr, "  stun                 — discover public address")
+		fmt.Fprintln(os.Stderr, "  send <path>          — send file or directory")
+		fmt.Fprintln(os.Stderr, "  receive <code>       — receive transfer")
+		fmt.Fprintln(os.Stderr, "  receive -out <dir> <code>")
 		return nil
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "stun":
 		return runSTUN()
 	case "send":
-		return runSend()
+		return runSend(args[1:])
 	case "receive":
-		return runReceive()
+		return runReceive(args[1:])
 	default:
-		return fmt.Errorf("unknown command: %s", os.Args[1])
+		return fmt.Errorf("unknown command: %s", args[0])
 	}
 }
 
@@ -52,23 +61,21 @@ func runSTUN() error {
 	return nil
 }
 
-func runSend() error {
+func runSend(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
-	serverURL := fs.String("server", "ws://localhost:8080/ws", "signaling server WebSocket URL")
-	if err := fs.Parse(os.Args[2:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	args := fs.Args()
-	if len(args) < 1 {
-		return fmt.Errorf("send: missing path\nusage: wani-client send [options] <path>")
+	if fs.NArg() < 1 {
+		return fmt.Errorf("send: missing path\nusage: wani-client send <path>")
 	}
-	path := args[0]
+	path := fs.Arg(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	sc, err := client.Connect(ctx, *serverURL)
+	sc, err := client.Connect(ctx, *serverURL) // serverURL is the global flag
 	if err != nil {
 		return fmt.Errorf("send: connect: %w", err)
 	}
@@ -155,24 +162,22 @@ func runSend() error {
 	return nil
 }
 
-func runReceive() error {
+func runReceive(args []string) error {
 	fs := flag.NewFlagSet("receive", flag.ContinueOnError)
-	serverURL := fs.String("server", "ws://localhost:8080/ws", "signaling server WebSocket URL")
 	outDir := fs.String("out", ".", "destination directory")
-	if err := fs.Parse(os.Args[2:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	args := fs.Args()
-	if len(args) < 1 {
-		return fmt.Errorf("receive: missing pairing code\nusage: wani-client receive [options] <code>")
+	if fs.NArg() < 1 {
+		return fmt.Errorf("receive: missing pairing code\nusage: wani-client receive [-out <dir>] <code>")
 	}
-	code := args[0]
+	code := fs.Arg(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	sc, err := client.Connect(ctx, *serverURL)
+	sc, err := client.Connect(ctx, *serverURL) // serverURL is the global flag
 	if err != nil {
 		return fmt.Errorf("receive: connect: %w", err)
 	}
