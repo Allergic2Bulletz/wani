@@ -22,7 +22,7 @@ jobs:
           cache: false
 
       - name: Build
-        run: GOOS=linux GOARCH=amd64 go build -o wani-server ./cmd/wani-server
+        run: GOOS=linux GOARCH=amd64 go build -o build/wani-server ./cmd/wani-server
 
       - name: Copy binary to VM
         uses: appleboy/scp-action@v0.1.7
@@ -30,7 +30,7 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          source: wani-server
+          source: build/wani-server
           target: ~/
 
       - name: Restart server
@@ -40,6 +40,7 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            chmod +x ~/wani-server
+            chmod +x ~/build/wani-server
+            cp ~/build/wani-server ~/wani-server
             pkill wani-server || true
             nohup ~/wani-server --addr :8080 > ~/wani-server.log 2>&1 &

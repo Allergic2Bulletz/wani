@@ -1,5 +1,4 @@
 secrets.json
 
 # Build output
-wani-server
-wani-client
+build/
