@@ -1,0 +1,1 @@
+1. SSH into vm using `ssh wani-vm`

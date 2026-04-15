@@ -11,18 +11,18 @@
 *Goal: Deployable server binary with automated build/deploy pipeline.*
 *Decisions: 1 (Go), 9 (single binary), 10 (core lib + CLI), 11 (Identity interface), 13 (VM + CI/CD)*
 
-- [ ] Initialize Go module (`go mod init`)
-- [ ] Scaffold project directory layout:
+- [x] Initialize Go module (`go mod init`)
+- [x] Scaffold project directory layout:
   - `cmd/wani-server/main.go` — server entrypoint
   - `cmd/wani-client/main.go` — client entrypoint
   - `internal/server/` — server logic
   - `internal/client/` — client core library
   - `internal/protocol/` — shared types (messages, manifest, pairing codes)
   - `internal/identity/` — `Identity` interface + `EphemeralIdentity` stub
-- [ ] Minimal wani-server: HTTP health check endpoint (`GET /health` → 200 OK)
-- [ ] Provision cloud VM (DigitalOcean $5/mo or Oracle Cloud Free Tier)
+- [x] Minimal wani-server: HTTP health check endpoint (`GET /health` → 200 OK)
+- [x] Provision cloud VM (DigitalOcean $5/mo or Oracle Cloud Free Tier)
   - Open ports: TCP 443 (WebSocket signaling), UDP range for TURN (when enabled)
-- [ ] Manual SCP deploy to VM, verify health endpoint via `curl`
+- [x] Manual SCP deploy to VM, verify health endpoint via `curl`
 - [ ] GitHub Actions workflow: **build → SCP → restart** on push to `main`
   - Trigger: `on: push: branches: [main]`
   - Steps: checkout → `go build -o wani-server ./cmd/wani-server` → SCP binary to VM → SSH restart
