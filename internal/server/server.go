@@ -1,23 +1,28 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 )
 
-// Server holds the HTTP mux and listen address. Additional fields (WebSocket
-// upgrader, session store, etc.) will be added in later phases.
+// Server holds the HTTP mux, listen address, and signaling state.
 type Server struct {
-	addr string
-	mux  *http.ServeMux
+	addr  string
+	mux   *http.ServeMux
+	store *SessionStore
 }
 
-// New creates a Server listening on addr and registers the /health handler.
-func New(addr string) *Server {
+// New creates a Server listening on addr and registers all handlers.
+// ctx is used to stop background goroutines (e.g. session cleanup).
+func New(ctx context.Context, addr string) *Server {
 	mux := http.NewServeMux()
-	s := &Server{addr: addr, mux: mux}
+	store := NewSessionStore()
+	s := &Server{addr: addr, mux: mux, store: store}
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/ws", s.handleWS)
+	store.StartCleanup(ctx)
 	return s
 }
 

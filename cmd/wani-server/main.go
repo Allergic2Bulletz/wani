@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Allergic2Bulletz/wani/internal/server"
 )
@@ -20,6 +23,9 @@ func run() error {
 	flag.StringVar(&addr, "addr", ":8080", "address to listen on")
 	flag.Parse()
 
-	s := server.New(addr)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	s := server.New(ctx, addr)
 	return s.ListenAndServe()
 }
