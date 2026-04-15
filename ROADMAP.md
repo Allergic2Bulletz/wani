@@ -38,10 +38,10 @@
 *Goal: Client can discover its public IP:port for NAT traversal.*
 *Decision: 3 (Full ICE — STUN is the first step)*
 
-- [ ] wani-client STUN query: use public STUN servers (`stun.cloudflare.com:3478`, `stun.l.google.com:19302`) to resolve server-reflexive candidate (public IP:port)
-- [ ] CLI command: `wani-client stun` — prints discovered public address
-- [ ] Handle STUN failure gracefully (timeout, unreachable) — report error, don't crash
-- [ ] Test: run from behind NAT, verify correct public IP is returned
+- [x] wani-client STUN query: use public STUN servers (`stun.cloudflare.com:3478`, `stun.l.google.com:19302`) to resolve server-reflexive candidate (public IP:port)
+- [x] CLI command: `wani-client stun` — prints discovered public address
+- [x] Handle STUN failure gracefully (timeout, unreachable) — report error, don't crash
+- [x] Test: run from behind NAT, verify correct public IP is returned
 
 **Verification:** `wani-client stun` prints correct public IP when run from behind home NAT. Run from cloud VM → prints VM's public IP (no NAT).
 
