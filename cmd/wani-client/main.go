@@ -92,7 +92,10 @@ func runSend(args []string) error {
 	// arrives with a trailing literal ". Strip it and clean the path.
 	path := filepath.Clean(strings.TrimRight(fs.Arg(0), `"`))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// 60s covers signaling + ICE gathering + QUIC handshake + manifest exchange.
+	// The context is cancelled (and replaced with Background) before file transfer
+	// so slow transfers on low-bandwidth links don't hit an arbitrary deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	sc, err := client.Connect(ctx, *serverURL) // serverURL is the global flag
@@ -168,6 +171,10 @@ func runSend(args []string) error {
 		return fmt.Errorf("send: receiver not ready: %s", resp.Status)
 	}
 
+	// Release the setup deadline — file transfer has no time limit.
+	cancel()
+	ctx = context.Background()
+
 	// File transfer.
 	skipped := len(resp.Completed)
 	if skipped > 0 {
@@ -236,7 +243,10 @@ func runReceive(args []string) error {
 	}
 	code := fs.Arg(0)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// 60s covers signaling + ICE gathering + QUIC handshake + manifest exchange.
+	// The context is cancelled (and replaced with Background) before file transfer
+	// so slow transfers on low-bandwidth links don't hit an arbitrary deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	sc, err := client.Connect(ctx, *serverURL) // serverURL is the global flag
@@ -296,6 +306,10 @@ func runReceive(args []string) error {
 	if len(skip) > 0 {
 		fmt.Printf("Resuming: %d file(s) already received\n", len(skip))
 	}
+
+	// Release the setup deadline — file transfer has no time limit.
+	cancel()
+	ctx = context.Background()
 
 	totalFiles := len(manifest.Files)
 	idx := len(skip)
