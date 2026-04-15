@@ -1,5 +1,5 @@
 ## TODOs
-
+- [ ] When sending a directory, the receiving client should automatically recreate the directory structure instead of dumping the contents into the folder wani-client is called from.
 - [ ] Prompt before overwriting existing files on receive (ask user yes/no per file, overwrite all, or add `--overwrite` flag)
 - [ ] Investigate cross-platform CLI argument parsing — currently there is ad-hoc handling (e.g. stripping trailing `"` characters from pairing codes) but there may be more edge cases across platforms (Windows shell quoting, PowerShell, etc.). Centralize all argument sanitization in one place in `cmd/wani-client/`.
 
