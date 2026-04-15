@@ -35,6 +35,10 @@ internal/protocol/  # Shared types: messages, manifest, pairing codes
 internal/identity/  # Identity interface + EphemeralIdentity (SPAKE2)
 ```
 
+## Agent Behavior
+
+- **Do not auto-implement planned features.** If a reported issue is best solved by a feature already on the roadmap, stop and report: (1) what the root cause is, (2) which planned feature resolves it, and (3) any practical workarounds available right now. Do not begin implementing the planned feature without explicit instruction.
+
 ## Conventions
 
 - Core library (`internal/client/`, `internal/protocol/`, `internal/identity/`) must have **zero** terminal I/O — no `fmt.Println`, no `os.Stdin`. Only `cmd/` packages talk to the terminal.
