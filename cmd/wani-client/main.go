@@ -20,6 +20,7 @@ func main() {
 
 // Global flags — must come before the subcommand name on the command line.
 var serverURL = flag.String("server", "ws://localhost:8080/ws", "signaling server WebSocket URL")
+var debug = flag.Bool("debug", false, "print ICE candidate and connection details")
 
 func run() error {
 	flag.Parse()
@@ -46,6 +47,16 @@ func run() error {
 		return runReceive(args[1:])
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
+	}
+}
+
+// debugLogf returns a logf function when -debug is set, otherwise nil (silenced in GatherAndConnect).
+func debugLogf() func(string, ...any) {
+	if !*debug {
+		return nil
+	}
+	return func(format string, args ...any) {
+		fmt.Printf(format, args...)
 	}
 }
 
@@ -126,7 +137,7 @@ func runSend(args []string) error {
 	if err != nil {
 		return fmt.Errorf("send: ICE agent: %w", err)
 	}
-	iceConn, err := client.GatherAndConnect(ctx, agent, sc, true)
+	iceConn, err := client.GatherAndConnect(ctx, agent, sc, true, debugLogf())
 	if err != nil {
 		return fmt.Errorf("send: ICE connect: %w", err)
 	}
@@ -208,7 +219,7 @@ func runReceive(args []string) error {
 	if err != nil {
 		return fmt.Errorf("receive: ICE agent: %w", err)
 	}
-	iceConn, err := client.GatherAndConnect(ctx, agent, sc, false)
+	iceConn, err := client.GatherAndConnect(ctx, agent, sc, false, debugLogf())
 	if err != nil {
 		return fmt.Errorf("receive: ICE connect: %w", err)
 	}

@@ -49,7 +49,10 @@ func NewICEAgent(stunServers []*stun.URI) (*ice.Agent, error) {
 //  4. ReadICECredentials (peer's ufrag/pwd)
 //  5. ReadICECandidate × N until nil sentinel
 //  6. agent.Dial / agent.Accept
-func GatherAndConnect(ctx context.Context, agent *ice.Agent, sc *SignalingClient, isControlling bool) (*ice.Conn, error) {
+func GatherAndConnect(ctx context.Context, agent *ice.Agent, sc *SignalingClient, isControlling bool, logf func(string, ...any)) (*ice.Conn, error) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
 	// Collect candidates as they arrive; close gatherDone when gathering finishes.
 	gatherDone := make(chan struct{})
 	var mu sync.Mutex
@@ -93,6 +96,7 @@ func GatherAndConnect(ctx context.Context, agent *ice.Agent, sc *SignalingClient
 	mu.Unlock()
 
 	for _, c := range candidates {
+		logf("[ice] local  %s %s %s\n", c.Type(), c.NetworkType(), c.Address())
 		if err := sc.SendICECandidate([]byte(c.Marshal())); err != nil {
 			return nil, fmt.Errorf("ice.GatherAndConnect: SendICECandidate: %w", err)
 		}
@@ -121,6 +125,7 @@ func GatherAndConnect(ctx context.Context, agent *ice.Agent, sc *SignalingClient
 		if err != nil {
 			return nil, fmt.Errorf("ice.GatherAndConnect: UnmarshalCandidate: %w", err)
 		}
+		logf("[ice] remote %s %s %s\n", c.Type(), c.NetworkType(), c.Address())
 		if err := agent.AddRemoteCandidate(c); err != nil {
 			return nil, fmt.Errorf("ice.GatherAndConnect: AddRemoteCandidate: %w", err)
 		}
@@ -131,11 +136,25 @@ func GatherAndConnect(ctx context.Context, agent *ice.Agent, sc *SignalingClient
 		if err != nil {
 			return nil, fmt.Errorf("ice.GatherAndConnect: Dial: %w", err)
 		}
+		logSelectedPair(agent, logf)
 		return conn, nil
 	}
 	conn, err := agent.Accept(ctx, remoteUfrag, remotePwd)
 	if err != nil {
 		return nil, fmt.Errorf("ice.GatherAndConnect: Accept: %w", err)
 	}
+	logSelectedPair(agent, logf)
 	return conn, nil
+}
+
+// logSelectedPair prints the winning ICE candidate pair after connectivity is established.
+func logSelectedPair(agent *ice.Agent, logf func(string, ...any)) {
+	pair, err := agent.GetSelectedCandidatePair()
+	if err != nil || pair == nil {
+		return
+	}
+	logf("[ice] selected pair: local=%s(%s %s) remote=%s(%s %s)\n",
+		pair.Local.Address(), pair.Local.Type(), pair.Local.NetworkType(),
+		pair.Remote.Address(), pair.Remote.Type(), pair.Remote.NetworkType(),
+	)
 }
