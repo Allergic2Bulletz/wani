@@ -1,4 +1,5 @@
 ## TODOs
+- [ ] Update AGENTS.md: during planning, particularly during bug-fixing, if the agent gets caught on something weird from my question, it can ask me for clarification. For example, it wasn't sure if I was providing example inputs and outputs from a binary running through Windows Powershell or running a linux binary via WSL. Rather than go in circles thinking about it, just ask for clarification.
 - [x] When sending a directory, the receiving client should automatically recreate the directory structure instead of dumping the contents into the folder wani-client is called from.
 - [ ] Actual graceful exiting/error handling
 - [ ] Related to above: differentiate between failed transfer/dead client and connection issues? (How do we test this?) What do we do with .wani-resume.json if the client dies?
