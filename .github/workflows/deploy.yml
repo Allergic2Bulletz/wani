@@ -50,7 +50,6 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             chmod +x ~/build/wani-server
-            cp ~/build/wani-server ~/wani-server
             sudo cp ~/wani-server.service /etc/systemd/system/wani-server.service
             sudo systemctl daemon-reload
             sudo systemctl restart wani-server

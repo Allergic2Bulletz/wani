@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=wani
-ExecStart=/home/wani/wani-server --addr :8080
+ExecStart=/home/wani/build/wani-server --addr :8080
 Restart=on-failure
 RestartSec=5
 
