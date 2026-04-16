@@ -9,12 +9,6 @@ Sender:    wani-client send ./files
 Receiver:  wani-client receive dance-anytime-chief-bubbling
 ```
 
-## Demo
-
-| Wani (P2P, QUIC/UDP) | Croc (relay, TCP) |
-|---|---|
-| ![Wani transfer](demo_wani.png) | ![Croc transfer](demo_croc.png) |
-
 Same 19 files (128.8 MB) transferred between the same two machines on different networks.
 
 ## How It Works

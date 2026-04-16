@@ -8,6 +8,9 @@
 - [ ] When sending multiple files, compact the transfer bar to just showing the overall progress. If possible, refresh the CLI to show the name/size/details of the current file, but don't create a new line for each file. If the sender/receiver uses a --detailed flag, then instead show a transfer bar for each file in sequence (current behavior.)
 - [ ] Investigate cross-platform CLI argument parsing — currently there is ad-hoc handling (e.g. stripping trailing `"` characters from pairing codes) but there may be more edge cases across platforms (Windows shell quoting, PowerShell, etc.). Centralize all argument sanitization in one place in `cmd/wani-client/`.
 - [ ] Double check our QUIC process flow to ensure we're not exposing security-relevant info - is the passphrase used for identification and crypto? Does the server ever see the passphrase exactly?
+- [ ] Send / receive fails if client is not allowed through firewall already.
+- [ ] Windows 10/11 specifically identifies binary as a threat when using -debug
+- [ ] Investigate how we use multiplexing
 
 ## Future Considerations
 
